@@ -7,7 +7,7 @@ This repository is a local-first Chinese character and vocabulary index for pers
 ## Data and privacy
 
 - Do not commit the personal SQLite database, Hanly exports, downloaded dictionary snapshots, or other private study data. Keep generated/imported data under ignored `data/` or in the ignored database file.
-- Preserve source, license, and attribution details for dictionary entries and example sentences. Consult `THIRD_PARTY_NOTICES.md` before adding datasets.
+- Preserve source, license, and attribution details for dictionary entries and example sentences. Consult `docs/THIRD_PARTY_NOTICES.md` before adding datasets.
 - Treat pasted reading text as private. Do not persist it unless the user explicitly chooses a saved-article feature.
 
 ## Implementation conventions
@@ -16,7 +16,7 @@ This repository is a local-first Chinese character and vocabulary index for pers
 - Make schema changes additive where practical and keep initialization/migrations safe to rerun.
 - Keep personal learning status separate from reference datasets such as HSK vocabulary.
 - Distinguish character-level coverage from word-level coverage. Avoid presenting surname or other proper-name heuristics as definitive; show candidates with context for user review.
-- Keep roadmap items in `README.md` and exploratory product/UI ideas in `docs/discovery.md`.
+- Keep planned development in `ROADMAP.md`, exploratory product/UI observations in `docs/discovery.md`, and the README focused on current usage and data-model documentation.
 
 ## Useful commands
 
