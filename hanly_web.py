@@ -13,7 +13,8 @@ from hanly_db import connect as connect_db
 
 STATUSES = ("new", "learning", "known", "suspended")
 NOTE_TYPES = ("general", "decomposition", "mnemonic", "usage", "writing")
-HAN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u{20000}-\u{2fa1f}]")
+HAN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0002fa1f]")
+COMMON_SURNAMES = set("李王张劉刘陈陳杨楊黄黃赵趙吴吳周徐孙孫马馬朱胡郭何高林罗羅郑鄭梁谢謝宋唐许許韩韓冯馮邓鄧曹彭曾肖田董袁潘于余蒋蔣蔡杜叶葉程苏蘇魏吕呂丁任沈姚卢盧姜崔钟鍾谭譚陆陸汪范金石廖贾賈夏韦韋付方白邹鄒孟熊秦邱江尹薛闫閻段雷侯龙龍史陶黎贺賀顾顧毛郝龚龔邵万萬钱錢严嚴覃武戴莫孔向汤湯")
 
 STYLE = """
 :root{color-scheme:light;--ink:#202522;--muted:#6b746e;--line:#e2e7e3;--paper:#f7f8f5;--green:#315e49;--pale:#e9f1eb}
@@ -25,6 +26,7 @@ header a{text-decoration:none;font-weight:700;font-size:19px}.wrap{max-width:118
 input,select,textarea,button{font:inherit;border:1px solid #cfd7d0;border-radius:6px;padding:9px 10px;background:#fff;color:var(--ink)}textarea{min-height:90px;resize:vertical}button,.button{border:0;background:var(--green);color:white;cursor:pointer;text-decoration:none;padding:10px 14px;border-radius:6px;font-weight:600}.button.secondary{background:var(--pale);color:var(--green)}
 .list{display:grid;gap:8px}.entry{padding:13px 15px;display:grid;grid-template-columns:minmax(100px,1fr) 2fr minmax(165px,1fr);gap:12px;align-items:center;text-decoration:none;color:inherit}.entry:hover{border-color:#91aa98}.hanzi{font-size:23px}.entry .meaning{color:#455149}.tag{display:inline-block;background:var(--pale);color:var(--green);border-radius:99px;padding:2px 9px;font-size:12px}
 .detail-title{font-size:42px;margin:0}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.note{padding:12px 0;border-bottom:1px solid var(--line);white-space:pre-wrap}.note:last-child{border:0}.pagination{display:flex;justify-content:space-between;margin:18px 0}.topline{display:flex;justify-content:space-between;align-items:center;gap:10px}
+mark{padding:1px 3px;border-radius:3px}.known{background:#d7ebdc}.tracked{background:#fff0c2}.unknown{background:#f6d4d1}
 @media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}.entry{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.wrap{margin-top:16px}header{padding:17px 20px}}
 """
 
@@ -61,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/article":
+            self.show_article("")
+            return
         if parsed.path.startswith("/entry/"):
             try:
                 self.show_entry(int(parsed.path.rsplit("/", 1)[1]))
@@ -74,6 +79,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def show_index(self, query):
         term = query.get("q", [""])[0].strip()
+        new_character = query.get("new", [""])[0]
         kind = query.get("kind", [""])[0]
         status = query.get("status", [""])[0]
         missing = query.get("missing", [""])[0]
@@ -123,9 +129,10 @@ class Handler(BaseHTTPRequestHandler):
         <label>Needs attention<select name='missing'>{option(missing,'','Any coverage')}{option(missing,'dictionary','Missing CC-CEDICT definitions')}{option(missing,'reading','Missing pinyin')}</select></label>
         <button>Filter</button></form></section>"""
         stats = f"<section class='stats'><div class='stat'><strong>{total:,}</strong><span>Entries</span></div><div class='stat'><strong>{characters:,}</strong><span>Characters</span></div><div class='stat'><strong>{words:,}</strong><span>Words</span></div><div class='stat'><strong>{known:,}</strong><span>Marked known</span></div><div class='stat'><strong>{coverage:,}</strong><span>CC-CEDICT covered</span></div></section>"
-        add_form = """<details class='panel'><summary><strong>Add a character or word</strong></summary><form method='post' action='/add' class='filters' style='margin-top:14px'>
+        article_link = "<section class='panel'><h2>Analyze a reading</h2><p>Paste graded text to see character coverage, unfamiliar characters, and possible names.</p><a class='button' href='/article'>Analyze pasted text</a></section>"
+        add_form = f"""<details class='panel' {'open' if new_character else ''}><summary><strong>Add a character or word</strong></summary><form method='post' action='/add' class='filters' style='margin-top:14px'>
         <label>Type<select name='kind'><option value='character'>Character</option><option value='word'>Word</option></select></label>
-        <label>Simplified<input name='simplified' required></label><label>Traditional<input name='traditional'></label>
+        <label>Simplified<input name='simplified' value='{esc(new_character)}' required></label><label>Traditional<input name='traditional'></label>
         <label>Pinyin<input name='pinyin' placeholder='nǐ hǎo'></label><label>Meaning<input name='meaning'></label><button>Add entry</button></form></details>"""
         rendered = []
         for row in rows:
@@ -141,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         prev_url = self.query_url(term, kind, status, missing, max(0, offset - 100))
         next_url = self.query_url(term, kind, status, missing, offset + 100)
         pager = f"<div class='pagination'><span>{start}–{end} of {count:,}</span><span>{f'<a href={quote(prev_url, safe="/?=&%")}>Previous</a>' if offset else ''} &nbsp; {f'<a href={quote(next_url, safe="/?=&%")}>Next</a>' if offset + 100 < count else ''}</span></div>"
-        content = f"<div class='topline'><div><h1>Vocabulary</h1><span class='muted'>Search and review your character and word list.</span></div><a class='button secondary' href='/'>Clear filters</a></div>{stats}{form}{add_form}{pager}<div class='list'>{''.join(rendered) if rendered else '<div class="panel">No matching entries.</div>'}</div>{pager}"
+        content = f"<div class='topline'><div><h1>Vocabulary</h1><span class='muted'>Search and review your character and word list.</span></div><a class='button secondary' href='/'>Clear filters</a></div>{stats}{article_link}{form}{add_form}{pager}<div class='list'>{''.join(rendered) if rendered else '<div class="panel">No matching entries.</div>'}</div>{pager}"
         self.respond(page("Vocabulary", content))
 
     @staticmethod
@@ -172,9 +179,59 @@ class Handler(BaseHTTPRequestHandler):
         <section class='panel'><h2>Personal notes</h2>{notes_html}<form method='post' action='/entry/{entry_id}/note'><div class='filters'><label>Note type<select name='note_type'>{''.join(f'<option value="{t}">{t.title()}</option>' for t in NOTE_TYPES)}</select></label><label class='field' style='flex:3'>Note<textarea name='body' required placeholder='Decomposition, mnemonic, usage, or writing note'></textarea></label><button>Add note</button></div></form></section>"""
         self.respond(page(entry["simplified"], content))
 
+    def show_article(self, article):
+        if not article:
+            content = """<p><a href='/'>← All entries</a></p><h1>Analyze a reading</h1>
+            <section class='panel'><p>Paste an article or graded-reader passage. Text is analyzed in memory and is not saved.</p>
+            <form method='post' action='/article'><label class='field'>Chinese text<textarea name='article' required style='min-height:260px' placeholder='Paste Chinese text here'></textarea></label><button style='margin-top:12px'>Analyze text</button></form></section>"""
+            self.respond(page("Analyze a reading", content)); return
+
+        with connect_db(self.db_path) as db:
+            rows = db.execute("SELECT simplified,learning_status FROM entries WHERE kind='character'").fetchall()
+        statuses = {}
+        for row in rows:
+            for char in HAN_RE.findall(row["simplified"]):
+                statuses[char] = row["learning_status"]
+
+        chars = HAN_RE.findall(article)
+        counts = {}
+        for char in chars:
+            counts[char] = counts.get(char, 0) + 1
+        unknown = sorted(char for char in counts if char not in statuses)
+        known = sum(1 for char in chars if statuses.get(char) == "known")
+        in_db = sum(1 for char in chars if char in statuses)
+
+        # Heuristic only: surname + one or two following Han characters. Review these
+        # candidates in context; ordinary words can match the same pattern.
+        candidates = {}
+        for match in re.finditer(r"(?<![\u3400-\u4dbf\u4e00-\u9fff])([\u3400-\u4dbf\u4e00-\u9fff])([\u3400-\u4dbf\u4e00-\u9fff]{1,2})", article):
+            if match.group(1) in COMMON_SURNAMES:
+                name = match.group(1) + match.group(2)
+                candidates.setdefault(name, article[max(0, match.start() - 8):min(len(article), match.end() + 8)])
+        escaped = esc(article)
+        rendered_text = "".join(f"<mark class='{('known' if statuses.get(m.group()) == 'known' else 'tracked' if m.group() in statuses else 'unknown')}'>{m.group()}</mark>" for m in HAN_RE.finditer(escaped))
+        # The escaped text preserves source characters; insert line breaks only after
+        # escaping so pasted markup is never interpreted as HTML.
+        candidate_html = "<p class='muted'>No likely surname-based name candidates found.</p>"
+        if candidates:
+            candidate_html = "<ul>" + "".join(f"<li><span class='tag'>{esc(name)}</span> <span class='muted'>…{esc(context)}…</span></li>" for name, context in sorted(candidates.items())) + "</ul>"
+        unknown_html = "".join(f"<a class='tag' href='/?new={quote(char)}'>{esc(char)} × {counts[char]}</a> " for char in unknown) or "<p>No characters are missing from your database.</p>"
+        content = f"""<p><a href='/'>← All entries</a> · <a href='/article'>New analysis</a></p><h1>Reading analysis</h1>
+        <section class='stats'><div class='stat'><strong>{len(chars):,}</strong><span>Han character occurrences</span></div><div class='stat'><strong>{len(counts):,}</strong><span>Distinct characters</span></div><div class='stat'><strong>{known:,}</strong><span>Occurrences marked known</span></div><div class='stat'><strong>{in_db:,}</strong><span>Occurrences in database</span></div><div class='stat'><strong>{len(unknown):,}</strong><span>Distinct characters missing</span></div></section>
+        <section class='panel'><h2>Possible proper names</h2>{candidate_html}<p class='muted'>This surname-pattern detector is only a hint and may miss names or flag ordinary words. It does not add candidates to your database.</p></section>
+        <section class='panel'><h2>Characters not in your database</h2>{unknown_html}<p class='muted'>Select a character to add it manually. Unknown characters are counted once in the distinct total and by occurrence in the article.</p></section>
+        <section class='panel'><h2>Text with character coverage</h2><div style='white-space:pre-wrap;line-height:2;font-size:19px'><mark class='known'>Marked known</mark> <mark class='tracked'>Tracked, not marked known</mark> <mark class='unknown'>Not in database</mark><br><br>{rendered_text}</div></section>"""
+        self.respond(page("Reading analysis", content))
+
     def do_POST(self):
         path = urlparse(self.path).path
         values = self.form()
+        if path == "/article":
+            article = values.get("article", "")
+            if not article:
+                self.respond(page("Analyze a reading", "<p>Please paste some Chinese text.</p>"), 400); return
+            self.show_article(article)
+            return
         with connect_db(self.db_path) as db:
             if path == "/add":
                 kind, simplified = values.get("kind"), values.get("simplified", "")

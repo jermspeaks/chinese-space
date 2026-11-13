@@ -18,7 +18,7 @@ python3 hanly_db.py enrich-cedict data/dictionaries/cedict_ts.u8
 python3 hanly_web.py
 ```
 
-The local browser UI is available at `http://127.0.0.1:8765`. It provides search and filters, database and dictionary coverage counts, latest Hanly forward/reverse progress, entry details, status updates, personal notes, and manual/Pleco lookup entry. Stop it with Ctrl-C.
+The local browser UI is available at `http://127.0.0.1:8765`. It provides search and filters, database and dictionary coverage counts, latest Hanly forward/reverse progress, entry details, status updates, personal notes, manual/Pleco lookup entry, and a paste-in reading analyzer. Stop it with Ctrl-C.
 
 The database file is intentionally not checked in; back up `hanly.sqlite` and any exports you create.
 
@@ -49,7 +49,7 @@ To import a Hanly learning progress JSON export, run `python3 hanly_db.py import
 1. **Database foundation (now):** local SQLite schema and commands to add, inspect, and annotate characters and words.
 2. **Populate the known set:** the first Hanly export is now imported. Check future exports as your learning progresses; snapshots preserve the progress fields Hanly provides. Deeper review history remains a later optional extension.
 3. **Dictionary enrichment:** use CC-CEDICT for broad word coverage, Unihan for additional ideograph readings/glosses, and Make Me a Hanzi for available character decompositions. Resolve radical glyphs through canonical radical mappings and leave stroke symbols as stroke metadata; use Pleco lookups or manual curation for remaining gaps.
-4. **Reading workflow:** paste/import graded text or articles, segment text into words, compare against known entries, and show unknown or partially known spans. Let you promote selected spans into the database.
+4. **Reading workflow:** paste text into the local analyzer to count distinct and repeated characters, compare them with personal character entries and known status, highlight the text, and list missing characters with links to add them. It also suggests possible names using a surname-pattern heuristic for manual review. Next: word segmentation and matching, unknown or partially known word spans, an explicit proper-name review flow, and saved article ingestion/history (the analyzer currently holds submitted text only for the response and does not save it).
 5. **Example sentences:** attach example sentences to words and, where useful, senses. Store translation, source, license, and contributor attribution; evaluate [Tatoeba's downloadable sentences](https://tatoeba.org/en/downloads) under its [reuse and attribution guidance](https://en.wiki.tatoeba.org/articles/show/faq), along with manually curated/contextual examples.
 6. **HSK reference vocabulary:** add separate, versioned `hsk_vocabulary` and `hsk_character_map` tables for HSK levels 1–9. Keep the standard edition, word, level, source, pinyin, and definitions in the reference vocabulary; map each word to its characters and matching personal entries in the character map. Use it to show level-by-level vocabulary and character coverage without changing personal learning status.
 7. **Anki export:** generate a reviewable Anki-compatible CSV/package from selected entries, with pinyin, meanings, examples, and your notes. Decomposition can become a card field when you want it.
