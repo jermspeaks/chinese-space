@@ -2,7 +2,7 @@
 
 A personal, local-first vocabulary database for characters and words. SQLite is the initial source of truth: it is portable, easy to back up, and can later feed a reading helper and Anki export without requiring a hosted service.
 
-See [ROADMAP.md](ROADMAP.md) for planned development and [docs/discovery.md](docs/discovery.md) for open product and usability observations.
+See [ROADMAP.md](docs/ROADMAP.md) for planned development and [docs/discovery.md](docs/discovery.md) for open product and usability observations.
 
 ## Start here
 
@@ -23,6 +23,8 @@ python3 hanly_web.py
 The local browser UI is available at `http://127.0.0.1:8765`. It provides search and filters, database and dictionary coverage counts, latest Hanly forward/reverse progress, entry details, status updates, personal notes, manual/Pleco lookup entry, and a paste-in reading analyzer. Stop it with Ctrl-C.
 
 The database file is intentionally not checked in; back up `hanly.sqlite` and any exports you create.
+
+Application code is organized in `hanly_index/`: SQLite setup and migrations, shared data queries, dictionary/import workflows, Chinese character utilities, reading analysis, and web templates. `hanly_db.py` and `hanly_web.py` remain the command-line entry points.
 
 ## Data model
 

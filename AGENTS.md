@@ -13,10 +13,11 @@ This repository is a local-first Chinese character and vocabulary index for pers
 ## Implementation conventions
 
 - Keep the initial app dependency-light and runnable with Python's standard library and SQLite.
-- Make schema changes additive where practical and keep initialization/migrations safe to rerun.
+- Keep `hanly_db.py` and `hanly_web.py` as thin entry points; reusable domain logic, persistence, imports, templates, and static assets belong in `hanly_index/`.
+- Make schema changes through ordered, versioned migrations and keep initialization/migrations safe to rerun.
 - Keep personal learning status separate from reference datasets such as HSK vocabulary.
 - Distinguish character-level coverage from word-level coverage. Avoid presenting surname or other proper-name heuristics as definitive; show candidates with context for user review.
-- Keep planned development in `ROADMAP.md`, exploratory product/UI observations in `docs/discovery.md`, and the README focused on current usage and data-model documentation.
+- Keep planned development in `docs/ROADMAP.md`, exploratory product/UI observations in `docs/discovery.md`, and the README focused on current usage and data-model documentation.
 
 ## Useful commands
 
@@ -25,4 +26,4 @@ python3 hanly_db.py init
 python3 hanly_web.py
 ```
 
-Do not add or run tests unless the user asks for them. For implementation changes, syntax checks such as `python3 -m py_compile hanly_web.py hanly_db.py` are useful.
+Do not add or run tests unless the user asks for them. For implementation changes, syntax checks such as `python3 -m py_compile hanly_web.py hanly_db.py hanly_index/*.py` are useful.
