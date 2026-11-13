@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS readings (
     entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     pinyin TEXT NOT NULL,
     is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+    source TEXT,
+    source_license TEXT,
     UNIQUE (entry_id, pinyin)
 );
 
@@ -26,7 +28,9 @@ CREATE TABLE IF NOT EXISTS meanings (
     id INTEGER PRIMARY KEY,
     entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     meaning TEXT NOT NULL,
-    meaning_order INTEGER NOT NULL DEFAULT 0
+    meaning_order INTEGER NOT NULL DEFAULT 0,
+    source TEXT,
+    source_license TEXT
 );
 
 CREATE TABLE IF NOT EXISTS notes (

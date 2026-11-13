@@ -3,13 +3,17 @@
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import sqlite3
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "hanly.sqlite"
+CC_CEDICT_URL = "https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz"
+CC_CEDICT_LICENSE = "CC BY-SA 4.0"
 
 
 def connect(path):
@@ -22,6 +26,12 @@ def connect(path):
 def initialize(path):
     with connect(path) as db:
         db.executescript((ROOT / "schema.sql").read_text(encoding="utf-8"))
+        # Additive migration for databases initialized before dictionary provenance existed.
+        for table in ("readings", "meanings"):
+            columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+            for column in ("source", "source_license"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
 
 
 def get_entry(db, value):
@@ -196,6 +206,99 @@ def import_hanly(args):
     print(f"Imported {len(valid)} Hanly progress records from {source_file}")
 
 
+def fetch_cedict(args):
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(CC_CEDICT_URL, headers={"User-Agent": "HanlyIndex/1.0"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        with gzip.GzipFile(fileobj=response) as compressed, args.output.open("wb") as output:
+            while chunk := compressed.read(1024 * 1024):
+                output.write(chunk)
+    print(f"Downloaded CC-CEDICT to {args.output}")
+
+
+def pinyin_with_tones(numbered):
+    tone_marks = {
+        "a": "āáǎà", "e": "ēéěè", "i": "īíǐì", "o": "ōóǒò", "u": "ūúǔù", "ü": "ǖǘǚǜ",
+        "A": "ĀÁǍÀ", "E": "ĒÉĚÈ", "I": "ĪÍǏÌ", "O": "ŌÓǑÒ", "U": "ŪÚǓÙ", "Ü": "ǕǗǙǛ",
+    }
+    output = []
+    for syllable in numbered.split():
+        syllable = syllable.replace("u:", "ü").replace("U:", "Ü").replace("v", "ü").replace("V", "Ü")
+        match = re.search(r"([1-5])$", syllable)
+        if not match:
+            output.append(syllable)
+            continue
+        tone = int(match.group(1))
+        base = syllable[:-1]
+        if tone == 5:
+            output.append(base)
+            continue
+        low = base.lower()
+        target = "a" if "a" in low else "e" if "e" in low else "o" if "ou" in low else ""
+        if not target:
+            target = next((char.lower() for char in reversed(base) if char.lower() in "aeiouü"), "")
+        if target:
+            index = next(i for i, char in enumerate(base) if char.lower() == target)
+            marked = tone_marks[base[index]][tone - 1]
+            base = base[:index] + marked + base[index + 1:]
+        output.append(base)
+    return " ".join(output).lower()
+
+
+def cedict_entries(path):
+    """Yield (traditional, simplified, pinyin, definitions) from CC-CEDICT text."""
+    pattern = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/(.*)/$")
+    with path.open(encoding="utf-8") as source:
+        for line_number, line in enumerate(source, start=1):
+            line = line.rstrip("\r\n")
+            if not line or line.startswith("#"):
+                continue
+            match = pattern.match(line)
+            if not match:
+                raise SystemExit(f"Could not parse CC-CEDICT line {line_number}: {line[:100]}")
+            traditional, simplified, pinyin, raw_definitions = match.groups()
+            definitions = [item.strip() for item in raw_definitions.split("/") if item.strip()]
+            yield traditional, simplified, pinyin_with_tones(pinyin), definitions
+
+
+def enrich_cedict(args):
+    dictionary = {}
+    for record in cedict_entries(args.file):
+        dictionary.setdefault(record[1], []).append(record)
+    matched = set()
+    reading_count = meaning_count = 0
+    with connect(args.db) as db:
+        for entry in db.execute("SELECT id, simplified FROM entries").fetchall():
+            records = dictionary.get(entry["simplified"])
+            if not records:
+                continue
+            matched.add(entry["id"])
+            for traditional, _simplified, pinyin, definitions in records:
+                db.execute(
+                    "UPDATE entries SET traditional = COALESCE(traditional, ?), "
+                    "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (traditional, entry["id"]),
+                )
+                before = db.total_changes
+                db.execute(
+                    "INSERT OR IGNORE INTO readings (entry_id, pinyin, is_primary, source, source_license) "
+                    "VALUES (?, ?, 0, 'CC-CEDICT', ?)",
+                    (entry["id"], pinyin, CC_CEDICT_LICENSE),
+                )
+                reading_count += db.total_changes - before
+                for definition in definitions:
+                    before = db.total_changes
+                    db.execute(
+                        "INSERT OR IGNORE INTO meanings "
+                        "(entry_id, meaning, meaning_order, source, source_license) "
+                        "VALUES (?, ?, (SELECT COALESCE(MAX(meaning_order), -1) + 1 "
+                        "FROM meanings WHERE entry_id = ?), 'CC-CEDICT', ?)",
+                        (entry["id"], definition, entry["id"], CC_CEDICT_LICENSE),
+                    )
+                    meaning_count += db.total_changes - before
+    print(f"Matched {len(matched)} database entries; added {reading_count} readings and {meaning_count} definitions.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="SQLite file (default: hanly.sqlite)")
@@ -225,6 +328,12 @@ def main():
     hanly = commands.add_parser("import-hanly", help="import a Hanly learning progress JSON export")
     hanly.add_argument("file", type=Path)
     hanly.set_defaults(func=import_hanly)
+    fetch = commands.add_parser("fetch-cedict", help="download CC-CEDICT into the ignored data directory")
+    fetch.add_argument("--output", type=Path, default=ROOT / "data" / "dictionaries" / "cedict_ts.u8")
+    fetch.set_defaults(func=fetch_cedict)
+    enrich = commands.add_parser("enrich-cedict", help="add matching CC-CEDICT pinyin and definitions")
+    enrich.add_argument("file", type=Path, help="unzipped CC-CEDICT cedict_ts.u8 text file")
+    enrich.set_defaults(func=enrich_cedict)
     args = parser.parse_args()
     if args.command != "init" and not args.db.exists():
         raise SystemExit(f"Database not found at {args.db}; run `python3 hanly_db.py init` first.")
